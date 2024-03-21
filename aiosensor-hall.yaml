@@ -1,0 +1,597 @@
+substitutions:
+  name: "aiosensor-hall"  # lowercase only, have to be unique
+  friendly_name: "AIOSensor Hall"  # device name and entity prefix
+  version: "3.0.1"
+  # buzzer_pin: A0
+  # i2s_bclk_pin: A1
+  # i2s_din_pin: "${buzzer_pin}"
+  # i2s_lrclk_pin: A5
+  # pir_pin: A4
+  # rgb_led_pin: GPIO7
+  # rgb_led_type: GRB
+  # sen0395_io_pin: A2
+  uart_rx_pin: GPIO20
+  uart_tx_pin: GPIO21
+  bh1750_update_interval: "5s"
+  illuminance_offset: "0"
+  bme_address: "0x77"  # for some modules you have to change it to 0x77
+  bme_update_interval: 30s
+  co2_offset: "0"  # bsec only
+  humidity_offset: "0"
+  iaq_offset: "0" # bsec only
+  pressure_offset: "0"
+  temperature_offset: "0"
+  voc_offset: "0" # bsec only
+  # LD2410(c) does not work? Please notice:
+  # https://aiosense.readthedocs.io/en/latest/debugging/#ld2410c-does-not-work
+
+  # pir_delayed_off: 1s
+  # pir_delayed_on: 0s
+
+  # led_strobe_on: 50ms   # controls the strobe effect if rgb_led or led is enabled
+  # led_strobe_off: 100ms
+
+#packages:
+#  remote_package:
+#    url: https://github.com/schluggi/AIOsense
+#    ref: esphome-v3.0.1
+#    refresh: 1d
+#    files:
+#      - esphome/packages/config/base.yaml
+#
+#      # ----- board -----
+#      - esphome/packages/config/esp32-c3-mini.yaml
+#      # - esphome/packages/config/esp32-d1-mini.yaml
+#      # - esphome/packages/config/esp32-s2-mini.yaml
+#      # - esphome/packages/config/esp32-s3-mini.yaml
+#      # - esphome/packages/config/esp8266-d1-mini.yaml
+#
+#      # ----- modules -----
+#      - esphome/packages/sensors/bh1750.yaml
+#      # - esphome/packages/sensors/bme280.yaml  # enable for bme280
+#      - esphome/packages/sensors/bme68x_bsec.yaml  # disable for bme280
+#      # - esphome/packages/sensors/buzzer.yaml  # PCB >= v2.1.0
+#      # - esphome/packages/sensors/occupancy.yaml  # only if pir & mmWave are activated
+#      # - esphome/packages/sensors/pir.yaml
+#
+#      # ----- voice assistant (use rgb_led for esp32-c3 & esp32-s3 only-----
+#      # - esphome/packages/sensors/voice_assistant-rgb_led.yaml
+#      # - esphome/packages/sensors/voice_assistant-led.yaml
+#
+#      # ----- led modules (use rgb_led for esp32-c3 & esp32-s3 only) -----
+#      # - esphome/packages/sensors/rgb_led.yaml
+#      # - esphome/packages/sensors/led.yaml
+#
+#      # ----- mmWave radar sensor -----
+#      - esphome/packages/sensors/ld2410.yaml
+#      # - esphome/packages/sensors/sen0395.yaml
+
+esphome:
+  name: "${name}"
+  comment: AIOSensor Hall
+  friendly_name: "${friendly_name}"
+  project:
+    name: "Schluggi.AIOsense"
+    version: "${version}"
+  platformio_options:
+    board_build.extra_flags:
+      - "-DARDUINO_USB_CDC_ON_BOOT=0"
+    board_build.flash_mode: dio
+  min_version: 2023.10.0
+  on_boot:
+    - priority: 100
+      then:
+        lambda: |-
+          id(cpu_speed) = ESP.getCpuFreqMHz();
+
+esp32:
+  board: lolin_c3_mini
+  variant: ESP32C3
+
+globals:
+  - id: cpu_speed
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: last_update_ld2450
+    type: unsigned long
+    restore_value: no
+    initial_value: '0'
+  - id: init_zone_publish
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: last_illuminance
+    type: float
+    restore_value: no
+    initial_value: "-1"
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "cWGEB1A3yvavfOjbmf8Ytp2d10CiJFgowdnpar9jAQU="
+
+ota:
+  password: "8f9e7c98b4614e518cf72fcb839ef394"
+  safe_mode: False
+
+logger:
+#  baud_rate: 0  # disable logging via UART
+
+debug:
+  update_interval: 30s
+
+i2c:
+  sda: GPIO8
+  scl: GPIO9
+  scan: true
+  id: bus_a
+
+uart:
+  tx_pin: "${uart_tx_pin}"
+  rx_pin: "${uart_rx_pin}"
+  baud_rate: 256000
+  parity: NONE
+  stop_bits: 1
+  data_bits: 8
+
+time:
+  - platform: sntp
+    id: time_now
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # Fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "${name}"
+    password: !secret web_server_password
+  output_power: 8.5dBm
+
+captive_portal:
+
+web_server:
+  port: 80
+  auth:
+    username: !secret web_server_user
+    password: !secret web_server_password
+
+# bluetooth_proxy:
+
+external_components:
+  - source: github://schluggi/esphome@dev
+    components:
+      - bme68x_bsec
+
+bme68x_bsec:
+  address: "${bme_address}"
+  bsec_configuration: 0,0,2,2,189,1,0,0,0,0,0,0,213,8,0,0,52,0,1,0,0,192,168,71,64,49,119,76,0,0,97,69,0,0,97,69,137,65,0,63,0,0,0,63,0,0,64,63,205,204,204,62,10,0,3,0,216,85,0,100,0,0,96,64,23,183,209,56,28,0,2,0,0,244,1,150,0,50,0,0,128,64,0,0,32,65,144,1,0,0,112,65,0,0,0,63,16,0,3,0,10,215,163,60,10,215,35,59,10,215,35,59,13,0,5,0,0,0,0,0,100,35,41,29,86,88,0,9,0,229,208,34,62,0,0,0,0,0,0,0,0,218,27,156,62,225,11,67,64,0,0,160,64,0,0,0,0,0,0,0,0,94,75,72,189,93,254,159,64,66,62,160,191,0,0,0,0,0,0,0,0,33,31,180,190,138,176,97,64,65,241,99,190,0,0,0,0,0,0,0,0,167,121,71,61,165,189,41,192,184,30,189,64,12,0,10,0,0,0,0,0,0,0,0,0,173,6,11,0,1,2,2,207,61,208,65,149,110,24,66,180,108,177,65,219,148,13,192,70,132,58,66,163,58,140,192,12,99,178,192,185,59,255,193,178,213,175,63,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,110,211,55,195,237,6,56,67,0,0,0,0,0,0,0,0,26,3,255,63,61,246,7,192,171,201,228,192,249,144,215,63,237,199,104,193,128,158,216,64,117,140,155,63,137,120,129,67,108,109,253,191,0,0,0,0,81,64,57,68,103,241,231,64,109,29,152,192,209,43,193,63,93,54,30,65,197,46,92,64,128,27,224,192,6,20,144,191,56,179,130,64,0,0,0,0,43,156,59,196,33,217,100,194,104,77,72,65,15,103,175,191,249,252,12,193,63,117,253,192,233,5,141,65,155,42,25,64,13,88,249,191,0,0,0,0,48,141,122,190,204,150,44,192,36,162,29,193,96,59,39,189,54,202,48,65,151,205,68,64,79,105,55,193,53,120,53,192,77,211,32,192,0,0,0,0,193,207,92,65,239,201,76,65,208,70,82,66,81,63,96,65,48,179,0,194,251,96,242,193,176,51,96,194,153,114,98,66,144,247,64,65,0,0,0,0,219,179,180,63,175,218,119,191,51,71,207,191,245,145,129,63,53,16,244,65,138,208,117,65,138,97,36,66,228,15,32,195,126,91,103,191,0,0,0,0,26,151,170,193,64,105,49,193,46,223,189,193,129,203,168,193,40,91,49,66,4,87,107,65,205,202,37,65,244,36,154,66,240,85,39,193,0,0,0,0,166,96,87,192,114,7,68,191,233,32,214,63,84,249,40,192,45,78,132,64,145,33,253,61,49,43,187,192,244,32,77,67,224,250,71,191,0,0,0,0,103,75,214,190,206,141,252,63,99,15,178,65,80,79,166,190,214,25,146,192,165,29,24,194,18,228,219,193,113,246,235,194,49,115,232,63,0,0,0,0,17,211,124,64,56,252,251,62,25,118,148,193,168,234,94,64,131,157,82,64,217,119,236,65,120,245,240,65,17,69,168,195,49,51,8,63,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,131,217,97,66,182,104,101,194,0,0,0,0,0,0,0,0,6,142,142,195,229,54,143,67,0,0,0,0,0,0,0,0,25,224,153,66,217,51,154,194,0,0,0,0,0,0,0,0,142,36,105,194,199,63,110,66,0,0,0,0,0,0,0,0,206,73,250,193,138,69,249,65,0,0,0,0,0,0,0,0,123,173,127,66,20,116,128,194,0,0,0,0,0,0,0,0,49,65,49,64,205,213,107,192,0,0,0,0,0,0,0,0,189,250,179,194,164,98,180,66,0,0,0,0,0,0,0,0,96,182,197,67,155,71,197,195,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,185,28,179,73,64,25,141,76,223,26,138,76,222,207,133,76,87,134,164,75,23,127,159,75,166,9,155,75,94,120,170,73,95,221,177,73,93,44,182,73,0,0,0,0,0,0,0,0,0,0,0,0,30,55,120,73,215,98,32,76,7,79,34,76,161,238,36,76,119,151,160,75,119,96,157,75,202,75,154,75,118,89,111,73,133,239,116,73,219,140,120,73,0,0,128,63,0,0,128,63,0,0,128,63,0,0,0,87,1,254,0,2,1,5,48,117,100,0,44,1,112,23,151,7,132,3,197,0,92,4,144,1,64,1,64,1,144,1,48,117,48,117,48,117,48,117,100,0,100,0,100,0,48,117,48,117,48,117,100,0,100,0,48,117,48,117,8,7,8,7,8,7,8,7,8,7,100,0,100,0,100,0,100,0,48,117,48,117,48,117,100,0,100,0,100,0,48,117,48,117,100,0,100,0,255,255,255,255,255,255,255,255,255,255,44,1,44,1,44,1,44,1,44,1,44,1,44,1,44,1,44,1,44,1,44,1,44,1,44,1,44,1,255,255,255,255,255,255,255,255,255,255,8,7,8,7,8,7,8,7,8,7,8,7,8,7,8,7,8,7,8,7,8,7,8,7,8,7,8,7,255,255,255,255,255,255,255,255,255,255,112,23,112,23,112,23,112,23,112,23,112,23,112,23,112,23,112,23,112,23,112,23,112,23,112,23,112,23,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,220,5,220,5,220,5,255,255,255,255,255,255,220,5,220,5,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,48,117,0,5,10,5,0,2,0,10,0,30,0,5,0,5,0,5,0,5,0,5,0,5,0,64,1,100,0,100,0,100,0,200,0,200,0,200,0,64,1,64,1,64,1,10,0,0,0,0,145,33,0,0
+  state_save_interval: 30min
+
+ld2410:
+
+button:
+  - platform: restart
+    icon: mdi:power-cycle
+    name: "ESP Reboot"
+    entity_category: diagnostic
+  - platform: safe_mode
+    name: "Restart (Safe Mode)"
+    entity_category: diagnostic
+  - platform: ld2410
+    factory_reset:
+      name: "mmWave Factory Reset"
+    restart:
+      name: "mmWave Restart"
+    query_params:
+      name: "mmWave Force Refresh"
+
+switch:
+  - platform: ld2410
+    engineering_mode:
+      name: "mmWave Engineering Mode"
+    bluetooth:
+      name: "mmWave Bluetooth"
+  - platform: factory_reset
+    name: Factory Reset
+    disabled_by_default: True
+    icon: mdi:heart-broken
+
+select:
+  - platform: ld2410
+    distance_resolution:
+      name: "mmWave Distance Resolution"
+    baud_rate:
+      name: "mmWave Baud Tate"
+    light_function:
+      name: "mmWave Light Function"
+    out_pin_level:
+      name: "mmWave Out Pin Level"
+
+binary_sensor:
+  - platform: status
+    name: "Status"
+    id: ink_ha_connected
+  - platform: template
+    name: "Occupancy"
+    id: occupancy
+    device_class: occupancy
+    lambda: |-
+      if (id(motion_mmwave).state) {
+        return true;
+      }
+      else if (id(motion_mmwave).state == 0 ) {
+        return false;
+      }
+      else {
+        return id(occupancy).state;
+      }
+  #  lambda: |-
+  #    if (id(motion_mmwave).state or id(motion_pir).state) {
+  #      return true;
+  #    }
+  #    else if (id(motion_mmwave).state == 0 and id(motion_pir).state == 0) {
+  #      return false;
+  #    }
+  #    else {
+  #      return id(occupancy).state;
+  #    }
+  - platform: ld2410
+    has_target:
+      name: "mmWave"
+      id: motion_mmwave
+    has_moving_target:
+      name: "mmWave Moving Target"
+    has_still_target:
+      name: "mmWave Still Target"
+    out_pin_presence_status:
+      name: "mmWave out pin presence status"
+
+sensor:
+  - platform: wifi_signal
+    name: "Wifi Signal"
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: "diagnostic"
+  - platform: template
+    name: "ESP CPU Speed"
+    accuracy_decimals: 0
+    icon: mdi:cpu-32-bit
+    unit_of_measurement: Mhz
+    disabled_by_default: True
+    lambda: |-
+      return (id(cpu_speed));
+    entity_category: "diagnostic"
+    update_interval: 600s
+  - platform: internal_temperature
+    name: "CPU Temperature"
+  - platform: template
+    id: sys_esp_temperature
+    name: ESP Temperature
+    lambda: return temperatureRead();
+    unit_of_measurement: °C
+    device_class: TEMPERATURE
+    update_interval: 45s
+    entity_category: "diagnostic"
+  - platform: template
+    id: esp_memory
+    icon: mdi:memory
+    name: ESP Free Memory
+    lambda: return heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024;
+    unit_of_measurement: 'kB'
+    state_class: measurement
+    entity_category: "diagnostic"
+    update_interval: 60s
+  - platform: uptime
+    name: ESP Uptime
+    id: sys_uptime
+    update_interval: 60s
+  - platform: bh1750
+    id: illuminance_sensor
+    name: "Illuminance"
+    address: 0x23
+    update_interval: "${bh1750_update_interval}"
+    filters:
+      - offset: ${illuminance_offset}
+      - lambda: "return x + id(illuminance_offset_ui).state;"
+  - platform: bme68x_bsec
+    temperature:
+      name: "Temperature"
+      filters:
+        - offset: ${temperature_offset}
+        - lambda: "return x + id(temperature_offset_ui).state;"
+    pressure:
+      name: "Pressure"
+      device_class: atmospheric_pressure
+      filters:
+        - offset: ${pressure_offset}
+        - lambda: "return x + id(pressure_offset_ui).state;"
+    humidity:
+      name: "Humidity"
+      filters:
+        - offset: ${humidity_offset}
+        - lambda: "return x + id(humidity_offset_ui).state;"
+    iaq:
+      name: "IAQ"
+      id: iaq
+      device_class: aqi
+      filters:
+        - offset: ${iaq_offset}
+        - lambda: "return x + id(iaq_offset_ui).state;"
+    co2_equivalent:
+      name: "CO2 Equivalent"
+      device_class: carbon_dioxide
+      filters:
+        - offset: ${co2_offset}
+        - lambda: "return x + id(co2_offset_ui).state;"
+    breath_voc_equivalent:
+      name: "Breath VOC Equivalent"
+      device_class: volatile_organic_compounds
+      filters:
+        - offset: ${voc_offset}
+        - lambda: "return x + id(voc_offset_ui).state;"
+  - platform: ld2410
+    light:
+      name: light
+    moving_distance:
+      name: "mmWave Moving Distance"
+    still_distance:
+      name: "mmWave Still Distance"
+    moving_energy:
+      name: "mmWave Move Energy"
+    still_energy:
+      name: "mmWave Still Energy"
+    detection_distance:
+      name: "mmWave Detection Distance"
+    g0:
+      move_energy:
+        name: "mmWave g0 move energy"
+      still_energy:
+        name: "mmWave g0 still energy"
+    g1:
+      move_energy:
+        name: "mmWave g1 move energy"
+      still_energy:
+        name: "mmWave g1 still energy"
+    g2:
+      move_energy:
+        name: "mmWave g2 move energy"
+      still_energy:
+        name: "mmWave g2 still energy"
+    g3:
+      move_energy:
+        name: "mmWave g3 move energy"
+      still_energy:
+        name: "mmWave g3 still energy"
+    g4:
+      move_energy:
+        name: "mmWave g4 move energy"
+      still_energy:
+        name: "mmWave g4 still energy"
+    g5:
+      move_energy:
+        name: "mmWave g5 move energy"
+      still_energy:
+        name: "mmWave g5 still energy"
+    g6:
+      move_energy:
+        name: "mmWave g6 move energy"
+      still_energy:
+        name: "mmWave g6 still energy"
+    g7:
+      move_energy:
+        name: "mmWave g7 move energy"
+      still_energy:
+        name: "mmWave g7 still energy"
+    g8:
+      move_energy:
+        name: "mmWave g8 move energy"
+      still_energy:
+        name: "mmWave g8 still energy"
+
+number:
+  - platform: template
+    name: "Illuminance Offset"
+    id: illuminance_offset_ui
+    unit_of_measurement: "lx"
+    min_value: -100
+    max_value: 100
+    step: 1
+    mode: box
+    update_interval: never
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    icon: "mdi:brightness-5"
+    entity_category: config
+    on_value:
+      - lambda: 'id(illuminance_sensor).update();'
+  - platform: template
+    name: "Temperature Offset"
+    id: temperature_offset_ui
+    unit_of_measurement: "°C"
+    min_value: -10
+    max_value: 10
+    step: 0.1
+    mode: box
+    update_interval: never
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    icon: "mdi:thermometer"
+    entity_category: config
+  - platform: template
+    name: "Humidity Offset"
+    id: humidity_offset_ui
+    unit_of_measurement: "%"
+    min_value: -50
+    max_value: 50
+    step: 0.1
+    mode: box
+    update_interval: never
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    icon: "mdi:water-percent"
+    entity_category: config
+  - platform: template
+    name: "Pressure Offset"
+    id: pressure_offset_ui
+    unit_of_measurement: "hPa"
+    min_value: -500
+    max_value: 500
+    step: 1
+    mode: box
+    update_interval: never
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    icon: "mdi:gauge"
+    entity_category: config
+  - platform: template
+    name: "CO2 Offset"
+    id: co2_offset_ui
+    unit_of_measurement: "ppm"
+    min_value: -1000
+    max_value: 1000
+    step: 1
+    mode: box
+    update_interval: never
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    icon: "mdi:test-tube"
+    entity_category: config
+  - platform: template
+    name: "VOC Offset"
+    id: voc_offset_ui
+    unit_of_measurement: "ppm"
+    min_value: -1000
+    max_value: 1000
+    step: 1
+    mode: box
+    update_interval: never
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    icon: "mdi:test-tube"
+    entity_category: config
+  - platform: template
+    name: "IAQ Offset"
+    id: iaq_offset_ui
+    unit_of_measurement: "IAQ"
+    min_value: -400
+    max_value: 400
+    step: 1
+    mode: box
+    update_interval: never
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    icon: "mdi:gauge"
+    entity_category: config
+  - platform: ld2410
+    timeout:
+      name: "mmWave Timeout"
+    light_threshold:
+      name: "mmWave Light Threshold"
+    max_move_distance_gate:
+      name: "mmWave Max Move Distance Gate"
+    max_still_distance_gate:
+      name: "mmWave Max Still Distance Gate"
+    g0:
+      move_threshold:
+        name: "mmWave g0 move threshold"
+      still_threshold:
+        name: "mmWave g0 still threshold"
+    g1:
+      move_threshold:
+        name: "mmWave g1 move threshold"
+      still_threshold:
+        name: "mmWave g1 still threshold"
+    g2:
+      move_threshold:
+        name: "mmWave g2 move threshold"
+      still_threshold:
+        name: "mmWave g2 still threshold"
+    g3:
+      move_threshold:
+        name: "mmWave g3 move threshold"
+      still_threshold:
+        name: "mmWave g3 still threshold"
+    g4:
+      move_threshold:
+        name: "mmWave g4 move threshold"
+      still_threshold:
+        name: "mmWave g4 still threshold"
+    g5:
+      move_threshold:
+        name: "mmWave g5 move threshold"
+      still_threshold:
+        name: "mmWave g5 still threshold"
+    g6:
+      move_threshold:
+        name: "mmWave g6 move threshold"
+      still_threshold:
+        name: "mmWave g6 still threshold"
+    g7:
+      move_threshold:
+        name: "mmWave g7 move threshold"
+      still_threshold:
+        name: "mmWave g7 still threshold"
+    g8:
+      move_threshold:
+        name: "mmWave g8 move threshold"
+      still_threshold:
+        name: "mmWave g8 still threshold"
+
+text_sensor:
+  - platform: template
+    name: "IAQ Classification"
+    icon: "mdi:checkbox-marked-circle-outline"
+    lambda: |-
+      if ( int(id(iaq).state) <= 50) {
+        return {"Excellent"};
+      }
+      else if (int(id(iaq).state) >= 51 && int(id(iaq).state) <= 100) {
+        return {"Good"};
+      }
+      else if (int(id(iaq).state) >= 101 && int(id(iaq).state) <= 150) {
+        return {"Lightly polluted"};
+      }
+      else if (int(id(iaq).state) >= 151 && int(id(iaq).state) <= 200) {
+        return {"Moderately polluted"};
+      }
+      else if (int(id(iaq).state) >= 201 && int(id(iaq).state) <= 250) {
+        return {"Heavily polluted"};
+      }
+      else if (int(id(iaq).state) >= 251 && int(id(iaq).state) <= 350) {
+        return {"Severely polluted"};
+      }
+      else if (int(id(iaq).state) >= 351) {
+        return {"Extremely polluted"};
+      }
+      else {
+        return {"error"};
+      }
+  - platform: ld2410
+    version:
+      name: "mmWave Firmware Version"
+    mac_address:
+      name: "mmWave Mac Address"
+  - platform: debug
+    reset_reason:
+      name: "ESP Reset Reason"
+      icon: mdi:anchor
+      disabled_by_default: True
+  - platform: wifi_info
+    ip_address:
+      name: ESP IP Address
+      entity_category: "diagnostic"
+      disabled_by_default: True
+      icon: mdi:ip-network
+    mac_address:
+      name: ESP MAC
+      entity_category: "diagnostic"
+      icon: mdi:ip-network
+      disabled_by_default: True
