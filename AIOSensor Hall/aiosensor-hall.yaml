@@ -68,8 +68,9 @@ substitutions:
 
 esphome:
   name: "${name}"
-  comment: AIOSensor Hall
+  comment: BLEProxy LD2410b BH1750 BME680
   friendly_name: "${friendly_name}"
+  name_add_mac_suffix: False
   project:
     name: "Schluggi.AIOsense"
     version: "${version}"
@@ -156,7 +157,15 @@ web_server:
     username: !secret web_server_user
     password: !secret web_server_password
 
-# bluetooth_proxy:
+esp32_ble_tracker:
+  scan_parameters:
+    active: true
+
+bluetooth_proxy:
+  active: true
+
+esp32_improv:
+  authorizer: none
 
 external_components:
   - source: github://schluggi/esphome@dev
