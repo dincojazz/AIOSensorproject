@@ -19,7 +19,7 @@ esphome:
   name: "${name}"
   comment: BLEProxy LD2410b BH1750 BME680
   friendly_name: "${friendly_name}"
-  name_add_mac_suffix: True
+  name_add_mac_suffix: False
   project:
     name: "Schluggi.AIOsense"
     version: "${version}"
@@ -35,7 +35,7 @@ esphome:
           id(cpu_speed) = ESP.getCpuFreqMHz();
 
 dashboard_import:
-  package_import_url: github.com/dincojazz/AIOSensor/edit/main/AIOSensor Hall/aiosensor-hall.yaml
+  package_import_url: github://dincojazz/AIOSensor/aiosensor.yaml@main
   import_full_config: true
 
 esp32:
@@ -102,7 +102,6 @@ wifi:
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
     ssid: "AIOSensor Fallback Hotspot"
-  #  ssid: "${name}"
     password: !secret web_server_password
   #output_power: 8.5dBm
 
