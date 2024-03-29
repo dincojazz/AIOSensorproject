@@ -188,16 +188,6 @@ binary_sensor:
       else {
         return id(occupancy).state;
       }
-  #  lambda: |-
-  #    if (id(motion_mmwave).state or id(motion_pir).state) {
-  #      return true;
-  #    }
-  #    else if (id(motion_mmwave).state == 0 and id(motion_pir).state == 0) {
-  #      return false;
-  #    }
-  #    else {
-  #      return id(occupancy).state;
-  #    }
   - platform: ld2410
     has_target:
       name: "mmWave"
