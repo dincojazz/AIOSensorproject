@@ -64,8 +64,11 @@ globals:
 
 # Enable Home Assistant API
 api:
+  encryption:
+    key: "USE YOUR OWN CREATED KEY"
 
 ota:
+  password: "USE YOUR OWN CREATED PASSWORD"
   safe_mode: False
 
 logger:
