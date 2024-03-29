@@ -19,7 +19,7 @@ esphome:
   name: "${name}"
   comment: BLEProxy LD2410b BH1750 BME680
   friendly_name: "${friendly_name}"
-  name_add_mac_suffix: False
+  name_add_mac_suffix: True
   project:
     name: "dincojazz.AIOsensor"
     version: "${version}"
