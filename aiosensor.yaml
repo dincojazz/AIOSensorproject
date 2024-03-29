@@ -1,7 +1,7 @@
 substitutions:
   name: "aiosensor"  # lowercase only, have to be unique
   friendly_name: "AIOSensor"  # device name and entity prefix
-  version: "3.0.1"
+  version: "1.0.0"
   uart_rx_pin: GPIO20
   uart_tx_pin: GPIO21
   bh1750_update_interval: "5s"
@@ -21,7 +21,7 @@ esphome:
   friendly_name: "${friendly_name}"
   name_add_mac_suffix: False
   project:
-    name: "Schluggi.AIOsense"
+    name: "dincojazz.AIOsensor"
     version: "${version}"
   platformio_options:
     board_build.extra_flags:
