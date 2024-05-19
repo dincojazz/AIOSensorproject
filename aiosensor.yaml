@@ -201,6 +201,10 @@ binary_sensor:
       name: "mmWave Still Target"
     out_pin_presence_status:
       name: "mmWave out pin presence status"
+  - platform: gpio
+    pin: GPIO0 #A0
+    name: GPIO Out pin presence
+    device_class: presence
 
 sensor:
   - platform: wifi_signal
