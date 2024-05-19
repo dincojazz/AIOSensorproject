@@ -1,7 +1,7 @@
 substitutions:
   name: "aiosensor"  # lowercase only, have to be unique
   friendly_name: "AIOSensor"  # device name and entity prefix
-  version: "1.0.0"
+  version: "1.0.1"
   uart_rx_pin: GPIO20
   uart_tx_pin: GPIO21
   bh1750_update_interval: "5s"
