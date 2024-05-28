@@ -120,8 +120,8 @@ esp32_ble_tracker:
 bluetooth_proxy:
   active: true
 
-esp32_improv:
-  authorizer: none
+#esp32_improv:
+#  authorizer: none
 
 external_components:
   - source: github://schluggi/esphome@dev
