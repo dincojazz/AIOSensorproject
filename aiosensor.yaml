@@ -270,6 +270,11 @@ sensor:
       filters:
         - offset: ${humidity_offset}
         - lambda: "return x + id(humidity_offset_ui).state;"
+    gas_resistance:
+      name: "Gas Resistance"
+      id: gasresistance
+      filters:
+        - median
     iaq:
       name: "IAQ"
       id: iaq
