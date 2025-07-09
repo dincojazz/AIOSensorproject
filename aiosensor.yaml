@@ -307,7 +307,7 @@ sensor:
         - lambda: "return x + id(co2_offset_ui).state;"
     breath_voc_equivalent:
       name: "Breath VOC Equivalent"
-      device_class: volatile_organic_compounds
+      device_class: volatile_organic_compounds_parts
       filters:
         - offset: ${voc_offset}
         - lambda: "return x + id(voc_offset_ui).state;"
