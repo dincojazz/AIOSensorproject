@@ -1,7 +1,8 @@
 substitutions:
   name: "aiosensor"  # lowercase only, have to be unique
   friendly_name: "AIOSensor"  # device name and entity prefix
-  version: "1.0.2"
+  blegatewayname: "aiosensor"
+  version: "1.0.3"
   uart_rx_pin: GPIO20
   uart_tx_pin: GPIO21
   bh1750_update_interval: "5s"
@@ -28,11 +29,6 @@ esphome:
       - "-DARDUINO_USB_CDC_ON_BOOT=0"
     board_build.flash_mode: dio
   min_version: 2023.10.0
-  on_boot:
-    - priority: 100
-      then:
-        lambda: |-
-          id(cpu_speed) = ESP.getCpuFreqMHz();
 
 dashboard_import:
   package_import_url: github://dincojazz/AIOSensor/aiosensor.yaml@main
@@ -42,13 +38,9 @@ esp32:
   board: lolin_c3_mini
   variant: ESP32C3
   framework:
-    type: arduino
+    type: esp-idf
 
 globals:
-  - id: cpu_speed
-    type: int
-    restore_value: no
-    initial_value: '0'
   - id: last_update_ld2450
     type: unsigned long
     restore_value: no
@@ -105,15 +97,9 @@ wifi:
   ap:
     ssid: "${friendly_name} Fallback Hotspot"
     password: !secret web_server_password
-  #output_power: 8.5dBm
+ output_power: 12.5dBm
 
 captive_portal:
-
-web_server:
-  port: 80
-  auth:
-    username: !secret web_server_user
-    password: !secret web_server_password
 
 esp32_ble_tracker:
   scan_parameters:
@@ -125,12 +111,25 @@ bluetooth_proxy:
 #esp32_improv:
 #  authorizer: none
 
+ble_gateway:
+  id: ${blegatewayname}_blegateway
+  devices:
+    - mac_address: !secret mi_scale_v2_mac
+  on_ble_advertise:
+    then:
+      homeassistant.event:
+        event: esphome.on_ble_advertise
+        data:
+          packet: !lambda return packet;
+          gateway_id: "$(ble_gateway_id)"
+
 bme68x_bsec2_i2c:
   address: "${bme_address}"
   model: bme680
   operating_age: 4d
   sample_rate: LP
   supply_voltage: 3.3V
+  temperature_offset: "${temperature_offset}"
 
 ld2410:
 
@@ -156,8 +155,21 @@ switch:
       name: "mmWave Engineering Mode"
     bluetooth:
       name: "mmWave Bluetooth"
+  - platform: template
+    id: switch_ble_gateway_discovery
+    name: "BLE Gateway Discovery"
+    icon: mdi:bluetooth-connect
+    lambda: return id(${blegatewayname}_blegateway).get_discovery();
+    turn_on_action:
+      lambda: 
+        id(${blegatewayname}_blegateway).set_discovery(true);
+    turn_off_action:
+      lambda: 
+        id(${blegatewayname}_blegateway).set_discovery(false);
+    disabled_by_default: false
+    entity_category: config
   - platform: factory_reset
-    name: Factory Reset
+    name: "ESP Factory Reset"
     disabled_by_default: True
     icon: mdi:heart-broken
 
@@ -175,7 +187,7 @@ select:
 binary_sensor:
   - platform: status
     name: "Status"
-    id: ink_ha_connected
+    id: link_ha_connected
   - platform: template
     name: "Occupancy"
     id: occupancy
@@ -190,16 +202,13 @@ binary_sensor:
       else {
         return id(occupancy).state;
       }
-  #  lambda: |-
-  #    if (id(motion_mmwave).state or id(motion_pir).state) {
-  #      return true;
-  #    }
-  #    else if (id(motion_mmwave).state == 0 and id(motion_pir).state == 0) {
-  #      return false;
-  #    }
-  #    else {
-  #      return id(occupancy).state;
-  #    }
+  - platform: homeassistant
+    id: ble_gateway_discovery
+    entity_id: binary_sensor.ble_gateway
+    attribute: discovery
+    on_state:
+      then:
+        lambda: id(${blegatewayname}_blegateway).set_discovery(x);
   - platform: ld2410
     has_target:
       name: "mmWave"
@@ -212,7 +221,7 @@ binary_sensor:
       name: "mmWave out pin presence status"
   - platform: gpio
     pin: GPIO0 #A0
-    name: GPIO Out pin presence
+    name: "GPIO Out pin presence"
     device_class: presence
 
 sensor:
@@ -221,39 +230,31 @@ sensor:
     id: wifi_signal_db
     update_interval: 60s
     entity_category: "diagnostic"
-  - platform: template
-    name: "ESP CPU Speed"
-    accuracy_decimals: 0
-    icon: mdi:cpu-32-bit
-    unit_of_measurement: Mhz
-    disabled_by_default: True
-    lambda: |-
-      return (id(cpu_speed));
-    entity_category: "diagnostic"
-    update_interval: 600s
+  - platform: debug
+    cpu_frequency:
+      icon: mdi:cpu-32-bit
+      id: cpu_speed
+      name: "CPU Frequency"
+      filters:
+        - lambda: return x / 1000000;
+      unit_of_measurement: "MHz"
+      entity_category: "diagnostic"
   - platform: internal_temperature
     name: "CPU Temperature"
   - platform: template
-    id: sys_esp_temperature
-    name: ESP Temperature
-    lambda: return temperatureRead();
-    unit_of_measurement: °C
-    device_class: TEMPERATURE
-    update_interval: 45s
-    entity_category: "diagnostic"
-  - platform: template
     id: esp_memory
     icon: mdi:memory
-    name: ESP Free Memory
+    name: "ESP Free Memory"
     lambda: return heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024;
     unit_of_measurement: 'kB'
     state_class: measurement
     entity_category: "diagnostic"
     update_interval: 60s
   - platform: uptime
-    name: ESP Uptime
+    name: "ESP Uptime"
     id: sys_uptime
     update_interval: 60s
+    entity_category: "diagnostic"
   - platform: bh1750
     id: illuminance_sensor
     name: "Illuminance"
@@ -286,9 +287,9 @@ sensor:
       id: gasresistance
       filters:
         - median
-    iaq:
-      name: "IAQ"
-      id: iaq
+    iaq_static:
+      name: "IAQ Static"
+      id: iaqstatic
       device_class: aqi
       filters:
         - offset: ${iaq_offset}
@@ -296,9 +297,6 @@ sensor:
     iaq_accuracy:
       name: "IAQ Accuracy"
       id: iaqaccuracy
-    iaq_static:
-      name: "IAQ Static"
-      id: iaqstatic
     co2_equivalent:
       name: "CO2 Equivalent"
       device_class: carbon_dioxide
@@ -372,7 +370,7 @@ sensor:
 
 number:
   - platform: template
-    name: "Illuminance Offset"
+    name: "Offset Illuminance"
     id: illuminance_offset_ui
     unit_of_measurement: "lx"
     min_value: -100
@@ -388,7 +386,7 @@ number:
     on_value:
       - lambda: 'id(illuminance_sensor).update();'
   - platform: template
-    name: "Temperature Offset"
+    name: "Offset Temperature"
     id: temperature_offset_ui
     unit_of_measurement: "°C"
     min_value: -25
@@ -402,7 +400,7 @@ number:
     icon: "mdi:thermometer"
     entity_category: config
   - platform: template
-    name: "Humidity Offset"
+    name: "Offset Humidity"
     id: humidity_offset_ui
     unit_of_measurement: "%"
     min_value: -50
@@ -416,7 +414,7 @@ number:
     icon: "mdi:water-percent"
     entity_category: config
   - platform: template
-    name: "Pressure Offset"
+    name: "Offset Pressure"
     id: pressure_offset_ui
     unit_of_measurement: "hPa"
     min_value: -500
@@ -430,7 +428,7 @@ number:
     icon: "mdi:gauge"
     entity_category: config
   - platform: template
-    name: "CO2 Offset"
+    name: "Offset CO2"
     id: co2_offset_ui
     unit_of_measurement: "ppm"
     min_value: -1000
@@ -444,7 +442,7 @@ number:
     icon: "mdi:test-tube"
     entity_category: config
   - platform: template
-    name: "VOC Offset"
+    name: "Offset VOC"
     id: voc_offset_ui
     unit_of_measurement: "ppm"
     min_value: -1000
@@ -458,7 +456,7 @@ number:
     icon: "mdi:test-tube"
     entity_category: config
   - platform: template
-    name: "IAQ Offset"
+    name: "Offset IAQ"
     id: iaq_offset_ui
     unit_of_measurement: "IAQ"
     min_value: -400
@@ -527,6 +525,8 @@ number:
         name: "mmWave g8 still threshold"
 
 text_sensor:
+  - platform: ble_scanner
+    name: "BLE Devices Scanner"
   - platform: bme68x_bsec2
     iaq_accuracy:
       name: "IAQ Accuracy"
@@ -536,25 +536,25 @@ text_sensor:
     name: "IAQ Classification"
     icon: "mdi:checkbox-marked-circle-outline"
     lambda: |-
-      if ( int(id(iaq).state) <= 50) {
+      if ( int(id(iaqstatic).state) <= 50) {
         return {"Excellent"};
       }
-      else if (int(id(iaq).state) >= 51 && int(id(iaq).state) <= 100) {
+      else if (int(id(iaqstatic).state) >= 51 && int(id(iaqstatic).state) <= 100) {
         return {"Good"};
       }
-      else if (int(id(iaq).state) >= 101 && int(id(iaq).state) <= 150) {
+      else if (int(id(iaqstatic).state) >= 101 && int(id(iaqstatic).state) <= 150) {
         return {"Lightly polluted"};
       }
-      else if (int(id(iaq).state) >= 151 && int(id(iaq).state) <= 200) {
+      else if (int(id(iaqstatic).state) >= 151 && int(id(iaqstatic).state) <= 200) {
         return {"Moderately polluted"};
       }
-      else if (int(id(iaq).state) >= 201 && int(id(iaq).state) <= 250) {
+      else if (int(id(iaqstatic).state) >= 201 && int(id(iaqstatic).state) <= 250) {
         return {"Heavily polluted"};
       }
-      else if (int(id(iaq).state) >= 251 && int(id(iaq).state) <= 350) {
+      else if (int(id(iaqstatic).state) >= 251 && int(id(iaqstatic).state) <= 350) {
         return {"Severely polluted"};
       }
-      else if (int(id(iaq).state) >= 351) {
+      else if (int(id(iaqstatic).state) >= 351) {
         return {"Extremely polluted"};
       }
       else {
@@ -565,19 +565,26 @@ text_sensor:
       name: "mmWave Firmware Version"
     mac_address:
       name: "mmWave Mac Address"
+  - platform: homeassistant
+    id: ble_gateway_devices
+    entity_id: binary_sensor.ble_gateway
+    attribute: devices
+    on_value:
+      then:
+        lambda: id(${blegatewayname}_blegateway).set_devices(x);
   - platform: debug
     reset_reason:
       name: "ESP Reset Reason"
       icon: mdi:anchor
-      disabled_by_default: True
+      disabled_by_default: False
   - platform: wifi_info
     ip_address:
-      name: ESP IP Address
+      name: "ESP IP Address"
       entity_category: "diagnostic"
       disabled_by_default: True
       icon: mdi:ip-network
     mac_address:
-      name: ESP MAC
+      name: "ESP MAC"
       entity_category: "diagnostic"
       icon: mdi:ip-network
       disabled_by_default: True
