@@ -2,25 +2,28 @@ substitutions:
   name: "aiosensor"  # lowercase only, have to be unique
   friendly_name: "AIOSensor"  # device name and entity prefix
   blegatewayname: "aiosensor"
-  version: "1.0.3"
+  version: "1.1.0"
+  rgb_led_pin: GPIO3
   uart_rx_pin: GPIO20
   uart_tx_pin: GPIO21
+  batt_volt_pin: A1
+  bss138_pin: GPIO2 # Gate of BSS138
   bh1750_update_interval: "5s"
   illuminance_offset: "0"
   bme_address: "0x77"  # for some modules you have to change it to 0x77
   bme_update_interval: 30s
   co2_offset: "0"  # bsec only
-  humidity_offset: "0"
+  humidity_offset: "35.00"
   iaq_offset: "0" # bsec only
   pressure_offset: "0"
-  temperature_offset: "0"
+  temperature_offset: "-8.18"
   voc_offset: "0" # bsec only
 
 esphome:
   name: "${name}"
   comment: BLEProxy LD2410b BH1750 BME680
   friendly_name: "${friendly_name}"
-  name_add_mac_suffix: True
+  name_add_mac_suffix: False
   project:
     name: "dincojazz.AIOsensor"
     version: "${version}"
@@ -40,6 +43,11 @@ esp32:
   framework:
     type: esp-idf
 
+external_components:
+  - source:
+      type: local
+      path: my_custom_components
+
 globals:
   - id: last_update_ld2450
     type: unsigned long
@@ -57,10 +65,11 @@ globals:
 # Enable Home Assistant API
 api:
   encryption:
-    key: "USE YOUR OWN CREATED KEY"
+    key: "QvqdEnjuvX3X9J7kh7x+Yu6/aB/oKz9ZdAUCfOyiYus="
 
 ota:
-  password: "USE YOUR OWN CREATED PASSWORD"
+  - platform: esphome
+    password: "6459aa7191104f44f695b6920aaf7fd6"
 
 safe_mode:
   disabled: false
@@ -92,14 +101,21 @@ time:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-  power_save_mode: FALSE
-  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  fast_connect: false
+  #power_save_mode: LIGHT #HIGH
+  # Fallback hotspot (captive portal) in case wifi connection fails
   ap:
-    ssid: "${friendly_name} Fallback Hotspot"
+    ssid: "${friendly_name}FallbackAP"
     password: !secret web_server_password
- output_power: 12.5dBm
+  output_power: 12.5dBm
 
 captive_portal:
+
+#web_server:
+#  port: 80
+#  auth:
+#    username: !secret web_server_user
+#    password: !secret web_server_password
 
 esp32_ble_tracker:
   scan_parameters:
@@ -122,6 +138,338 @@ ble_gateway:
         data:
           packet: !lambda return packet;
           gateway_id: "$(ble_gateway_id)"
+
+light:
+#  - platform: status_led
+#    name: ESP32C_Status
+#    pin:
+#      number: GPIO8
+#      inverted: True
+#    internal: False
+#    restore_mode: ALWAYS_OFF
+  
+  - platform: esp32_rmt_led_strip
+    rgb_order: GRB
+    pin: GPIO3
+    num_leds: 7
+    chipset: WS2812
+    name: "Air Quality Index LED"
+    id: ws2812_7led
+    restore_mode: RESTORE_AND_OFF
+    use_psram: False
+    effects:
+      - automation:
+          name: Dial Effect
+          sequence:
+            - light.addressable_set:
+                id: ws2812_7led
+                red: 0
+                green: 0
+                blue: 0
+            - light.addressable_set:
+                id: ws2812_7led7
+                red:   0
+                green: 1
+                blue:  0
+            - delay: 0.2s
+            - light.addressable_set:
+                id: ws2812_7led6
+                red:   0
+                green: 1
+                blue:  0
+            - light.addressable_set:
+                id: ws2812_7led7
+                red:   0
+                green: 1
+                blue:  0
+            - delay: 0.2s
+            - light.addressable_set:
+                id: ws2812_7led5
+                red: 0.98
+                green: 0.91
+                blue: 0.13
+            - light.addressable_set:
+                id: ws2812_7led7
+                red: 0.98
+                green: 0.91
+                blue: 0.13
+            - delay: 0.2s
+            - light.addressable_set:
+                id: ws2812_7led4
+                red: 1
+                green: 0.549
+                blue: 0
+            - light.addressable_set:
+                id: ws2812_7led7
+                red: 1
+                green: 0.549
+                blue: 0
+            - delay: 0.2s
+            - light.addressable_set:
+                id: ws2812_7led3
+                red:   1
+                green: 0
+                blue:  0
+            - light.addressable_set:
+                id: ws2812_7led7
+                red:   1
+                green: 0
+                blue:  0
+            - delay: 0.2s
+            - light.addressable_set:
+                id: ws2812_7led2
+                red:   0.5
+                green: 0
+                blue:  0.5
+            - light.addressable_set:
+                id: ws2812_7led7
+                red:   0.5
+                green: 0
+                blue:  0.5
+            - delay: 0.2s
+            - light.addressable_set:
+                id: ws2812_7led1
+                red:   0.502
+                green: 0
+                blue:  0
+            - light.addressable_set:
+                id: ws2812_7led7
+                red:   0.502
+                green: 0
+                blue:  0
+            - delay: 0.2s
+            - light.addressable_set:
+                id: ws2812_7led
+                red: 0
+                green: 0
+                blue: 0
+      - automation:
+          name: 5 LED Dial
+          sequence:
+            - light.addressable_set:
+                id: ws2812_7led6
+                color_brightness: 30%
+                red:   0
+                green: 1
+                blue:  0
+            - light.addressable_set:
+                id: ws2812_7led5
+                color_brightness: 30%
+                red: 0.98
+                green: 0.91
+                blue: 0.13
+            - light.addressable_set:
+                id: ws2812_7led4
+                color_brightness: 30%
+                red: 1
+                green: 0.549
+                blue: 0
+            - light.addressable_set:
+                id: ws2812_7led3
+                color_brightness: 30%
+                red:   1
+                green: 0
+                blue:  0
+            - light.addressable_set:
+                id: ws2812_7led2
+                color_brightness: 30%
+                red:   0.5
+                green: 0
+                blue:  0.5
+            - light.addressable_set:
+                id: ws2812_7led1
+                red:   0
+                green: 0
+                blue:  0
+
+      - pulse:
+          name: "Fast Pulse"
+          transition_length: 0.5s
+          update_interval: 0.5s
+          min_brightness: 0%
+          max_brightness: 100%
+      - pulse:
+          name: "Slow Pulse"
+          transition_length: 500ms
+          update_interval: 2s
+      - pulse:
+          name: "Slow Pulse 30%"
+          transition_length: 500ms
+          update_interval: 2s
+          min_brightness: 0%
+          max_brightness: 30%
+      - addressable_rainbow: 
+          name: Rainbow
+          speed: 10
+          width: 50
+  - platform: partition
+    name: "AQI LED_1"
+    id: ws2812_7led1
+    segments: 
+      - id: ws2812_7led
+        from: 0
+        to: 0
+    effects:
+      - pulse:
+          name: "Fast Pulse"
+          transition_length: 0.5s
+          update_interval: 0.5s
+          min_brightness: 0%
+          max_brightness: 100%
+      - pulse:
+          name: "Slow Pulse"
+          transition_length: 500ms
+          update_interval: 2s
+      - pulse:
+          name: "Slow Pulse 30%"
+          transition_length: 500ms
+          update_interval: 2s
+          min_brightness: 0%
+          max_brightness: 30%
+  - platform: partition
+    name: "AQI LED_2"
+    id: ws2812_7led2
+    segments: 
+      - id: ws2812_7led
+        from: 1
+        to: 1
+    effects:
+      - pulse:
+          name: "Fast Pulse"
+          transition_length: 0.5s
+          update_interval: 0.5s
+          min_brightness: 0%
+          max_brightness: 100%
+      - pulse:
+          name: "Slow Pulse"
+          transition_length: 500ms
+          update_interval: 2s
+      - pulse:
+          name: "Slow Pulse 30%"
+          transition_length: 500ms
+          update_interval: 2s
+          min_brightness: 0%
+          max_brightness: 30%
+  - platform: partition
+    name: "AQI LED_3"
+    id: ws2812_7led3
+    segments: 
+      - id: ws2812_7led
+        from: 2
+        to: 2
+    effects:
+      - pulse:
+          name: "Fast Pulse"
+          transition_length: 0.5s
+          update_interval: 0.5s
+          min_brightness: 0%
+          max_brightness: 100%
+      - pulse:
+          name: "Slow Pulse"
+          transition_length: 500ms
+          update_interval: 2s
+      - pulse:
+          name: "Slow Pulse 30%"
+          transition_length: 500ms
+          update_interval: 2s
+          min_brightness: 0%
+          max_brightness: 30%
+  - platform: partition
+    name: "AQI LED_4"
+    id: ws2812_7led4
+    segments: 
+      - id: ws2812_7led
+        from: 3
+        to: 3
+    effects:
+      - pulse:
+          name: "Fast Pulse"
+          transition_length: 0.5s
+          update_interval: 0.5s
+          min_brightness: 0%
+          max_brightness: 100%
+      - pulse:
+          name: "Slow Pulse"
+          transition_length: 500ms
+          update_interval: 2s
+      - pulse:
+          name: "Slow Pulse 30%"
+          transition_length: 500ms
+          update_interval: 2s
+          min_brightness: 0%
+          max_brightness: 30%
+  - platform: partition
+    name: "AQI LED_5"
+    id: ws2812_7led5
+    segments: 
+      - id: ws2812_7led
+        from: 4
+        to: 4
+    effects:
+      - pulse:
+          name: "Fast Pulse"
+          transition_length: 0.5s
+          update_interval: 0.5s
+          min_brightness: 0%
+          max_brightness: 100%
+      - pulse:
+          name: "Slow Pulse"
+          transition_length: 500ms
+          update_interval: 2s
+      - pulse:
+          name: "Slow Pulse 30%"
+          transition_length: 500ms
+          update_interval: 2s
+          min_brightness: 0%
+          max_brightness: 30%
+  - platform: partition
+    name: "AQI LED_6"
+    id: ws2812_7led6
+    segments: 
+      - id: ws2812_7led
+        from: 5
+        to: 5
+    effects:
+      - pulse:
+          name: "Fast Pulse"
+          transition_length: 0.5s
+          update_interval: 0.5s
+          min_brightness: 0%
+          max_brightness: 100%
+      - pulse:
+          name: "Slow Pulse"
+          transition_length: 500ms
+          update_interval: 2s
+      - pulse:
+          name: "Slow Pulse 30%"
+          transition_length: 500ms
+          update_interval: 2s
+          min_brightness: 0%
+          max_brightness: 30%
+  - platform: partition
+    name: "AQI LED_7"
+    id: ws2812_7led7
+    segments: 
+      - id: ws2812_7led
+        from: 6
+        to: 6
+    effects:
+      - pulse:
+          name: "Fast Pulse"
+          transition_length: 0.5s
+          update_interval: 0.5s
+          min_brightness: 0%
+          max_brightness: 100%
+      - pulse:
+          name: "Slow Pulse"
+          transition_length: 500ms
+          update_interval: 2s
+      - pulse:
+          name: "Slow Pulse 30%"
+          transition_length: 500ms
+          update_interval: 2s
+          min_brightness: 0%
+          max_brightness: 30%
 
 bme68x_bsec2_i2c:
   address: "${bme_address}"
@@ -148,6 +496,20 @@ button:
       name: "mmWave Restart"
     query_params:
       name: "mmWave Force Refresh"
+  - platform: template
+    name: "Script stop"
+    id: aqi_led_control_script_stop
+    on_press: 
+      then:
+        - script.stop: AQI_LED_control
+        - light.turn_off: ws2812_7led
+        - light.turn_off: ws2812_7led7
+  - platform: template
+    name: "Script start"
+    id: aqi_led_control_script_start
+    on_press: 
+      then:
+        - script.execute: AQI_LED_control
 
 switch:
   - platform: ld2410
@@ -168,6 +530,12 @@ switch:
         id(${blegatewayname}_blegateway).set_discovery(false);
     disabled_by_default: false
     entity_category: config
+  - platform: gpio
+    name: "Battery divider switch"
+    pin: "${bss138_pin}"
+    id: batt_divider_switch
+    restore_mode: ALWAYS_OFF
+    internal: false
   - platform: factory_reset
     name: "ESP Factory Reset"
     disabled_by_default: True
@@ -178,7 +546,7 @@ select:
     distance_resolution:
       name: "mmWave Distance Resolution"
     baud_rate:
-      name: "mmWave Baud Tate"
+      name: "mmWave Baud Rate"
     light_function:
       name: "mmWave Light Function"
     out_pin_level:
@@ -203,6 +571,7 @@ binary_sensor:
         return id(occupancy).state;
       }
   - platform: homeassistant
+    name: "BLE Gateway Discovery"
     id: ble_gateway_discovery
     entity_id: binary_sensor.ble_gateway
     attribute: discovery
@@ -213,6 +582,14 @@ binary_sensor:
     has_target:
       name: "mmWave"
       id: motion_mmwave
+      on_press: 
+        then:
+          - script.execute: AQI_LED_control
+      on_release: 
+        then:
+          - script.stop: AQI_LED_control
+          - light.turn_off: ws2812_7led
+          - light.turn_off: ws2812_7led7
     has_moving_target:
       name: "mmWave Moving Target"
     has_still_target:
@@ -367,6 +744,61 @@ sensor:
         name: "mmWave g8 move energy"
       still_energy:
         name: "mmWave g8 still energy"
+  - platform: adc
+    pin: "${batt_volt_pin}" # Voltage Divider Output
+    id: battery_voltage_raw
+    name: "Battery Voltage Raw"
+    update_interval: never #60s - Takes a reading every minute
+    attenuation: 12db # Range up to ~3.3V
+    accuracy_decimals: 3
+#    filters:
+#      - multiply: 2.0 # Corrects the 100k/100k divider ratio
+  - platform: template #adc
+    name: "Battery Voltage" #"${friendly_name} Battery Voltage"
+    id: "battery_voltage"
+    unit_of_measurement: "V"
+    icon: "mdi:battery-high"
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 2
+    update_interval: 60s
+    lambda: |-
+      // Trigger switch before reading
+      id(batt_divider_switch).turn_on();
+      delay(100); // Short wait for voltage to stabilize
+      
+      // Calculate real voltage: 
+      // Vout = Vin * (R2 / (R1 + R2))
+      // Vin = Vout * ((R1 + R2) / R2)
+      // Using 2.2MOm+2.2MOm, multiplier is (2200+2200)/100 = 2
+      float v_measured = id(battery_voltage_raw).state;
+      float v_real = v_measured * 2.0; 
+      
+      id(batt_divider_switch).turn_off();
+      return v_real;
+  - platform: template
+    name: "Battery Percentage" #"${friendly_name} Battery Percentage"
+    device_class: "battery"
+    id: "battery_percentage"
+    accuracy_decimals: 2
+    update_interval: never #60s
+    unit_of_measurement: '%'
+    lambda: |-
+      float v = id(battery_voltage).state;
+      if (v > 4.15) return 100.0;
+      if (v < 3.2) return 0.0;
+      return (v - 3.2) * 100.0 / (4.15 - 3.2);
+
+# Logic to update every minute
+interval:
+  - interval: 60s
+    then:
+      - switch.turn_on: batt_divider_switch
+      - delay: 100ms # Let voltage settle
+      - component.update: battery_voltage_raw
+      - component.update: battery_percentage
+      - delay: 100ms
+      - switch.turn_off: batt_divider_switch
 
 number:
   - platform: template
@@ -588,3 +1020,98 @@ text_sensor:
       entity_category: "diagnostic"
       icon: mdi:ip-network
       disabled_by_default: True
+
+script:
+  - id: AQI_LED_control
+    mode: single
+    then:
+      - if:
+          condition:
+            - lambda: return id(iaqstatic).state < 50;
+          then:
+            - light.turn_on:
+                id: ws2812_7led
+                effect: 5 LED Dial
+            - light.turn_on:
+                id: ws2812_7led7
+                effect: Slow Pulse 30%
+                brightness: !lambda |-
+                  return ((id(illuminance_sensor).state / 100) + 0.1);
+                red:   0
+                green: 1
+                blue:  0
+      - if:
+          condition:
+            - lambda: return id(iaqstatic).state >= 51 & id(iaqstatic).state < 100;
+          then:
+            - light.turn_on:
+                id: ws2812_7led
+                effect: 5 LED Dial
+            - light.turn_on:
+                id: ws2812_7led7
+                effect: Slow Pulse 30%
+                brightness: !lambda |-
+                  return ((id(illuminance_sensor).state / 100) + 0.1);
+                red: 1
+                green: 1
+                blue: 0
+      - if:
+          condition:
+            - lambda: return id(iaqstatic).state >= 101 & id(iaqstatic).state < 150;
+          then:
+            - light.turn_on:
+                id: ws2812_7led
+                effect: 5 LED Dial
+            - light.turn_on:
+                id: ws2812_7led7
+                effect: Slow Pulse 30%
+                brightness: !lambda |-
+                  return ((id(illuminance_sensor).state / 100) + 0.1);
+                red: 1
+                green: 0.65
+                blue: 0
+      - if:
+          condition:
+            - lambda: return id(iaqstatic).state >= 151 & id(iaqstatic).state < 200;
+          then:
+            - light.turn_on:
+                id: ws2812_7led
+                effect: 5 LED Dial
+            - light.turn_on:
+                id: ws2812_7led7
+                effect: Slow Pulse 30%
+                brightness: !lambda |-
+                  return ((id(illuminance_sensor).state / 100) + 0.1);
+                red: 1
+                green: 0
+                blue: 0
+      - if:
+          condition:
+            - lambda: return id(iaqstatic).state >= 201 & id(iaqstatic).state < 300;
+          then:
+            - light.turn_on:
+                id: ws2812_7led
+                effect: 5 LED Dial
+            - light.turn_on:
+                id: ws2812_7led7
+                effect: Slow Pulse 30%
+                brightness: !lambda |-
+                  return ((id(illuminance_sensor).state / 100) + 0.1);
+                red: 0.5
+                green: 0
+                blue: 0.5
+      - if:
+          condition:
+            - lambda: return id(iaqstatic).state >= 301;
+          then:
+            - light.turn_on:
+                id: ws2812_7led
+                effect: 5 LED Dial
+            - light.turn_on:
+                id: ws2812_7led7
+                effect: Slow Pulse 30%
+                brightness: !lambda |-
+                  return ((id(illuminance_sensor).state / 100) + 0.1);
+                red: 0.502
+                green: 0
+                blue: 0
