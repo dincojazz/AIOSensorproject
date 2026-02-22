@@ -2,21 +2,23 @@ substitutions:
   name: "aiosensor"  # lowercase only, have to be unique
   friendly_name: "AIOSensor"  # device name and entity prefix
   blegatewayname: "aiosensor"
-  version: "1.1.0"
+  version: "1.2.0"
   rgb_led_pin: GPIO3
   uart_rx_pin: GPIO20
   uart_tx_pin: GPIO21
   batt_volt_pin: A1
   bss138_pin: GPIO2 # Gate of BSS138
+  voltage_multiplier: "2.0" # Correct if needed
+  battery_update_interval: "60s"
   bh1750_update_interval: "5s"
   illuminance_offset: "0"
   bme_address: "0x77"  # for some modules you have to change it to 0x77
   bme_update_interval: 30s
   co2_offset: "0"  # bsec only
-  humidity_offset: "35.00"
+  humidity_offset: "0.0"
   iaq_offset: "0" # bsec only
   pressure_offset: "0"
-  temperature_offset: "-8.18"
+  temperature_offset: "0.0"
   voc_offset: "0" # bsec only
 
 esphome:
@@ -65,11 +67,11 @@ globals:
 # Enable Home Assistant API
 api:
   encryption:
-    key: "QvqdEnjuvX3X9J7kh7x+Yu6/aB/oKz9ZdAUCfOyiYus="
+    key: "dwShqGuNTqBy2jBYng0R8TY76tD+CBJZTXNZjUMNli8="
 
 ota:
   - platform: esphome
-    password: "6459aa7191104f44f695b6920aaf7fd6"
+    password: "326fc6ca927782acec4e0007007b0dfc"
 
 safe_mode:
   disabled: false
@@ -477,7 +479,7 @@ bme68x_bsec2_i2c:
   operating_age: 4d
   sample_rate: LP
   supply_voltage: 3.3V
-  temperature_offset: "${temperature_offset}"
+  #temperature_offset: "${temperature_offset}"
 
 ld2410:
 
@@ -510,7 +512,13 @@ button:
     on_press: 
       then:
         - script.execute: AQI_LED_control
-
+  - platform: template
+    name: "Update Battery Now"
+    id: update_battery_btn
+    icon: "mdi:gesture-tap-button"
+    on_press:
+      then:
+        - script.execute: take_battery_measurement
 switch:
   - platform: ld2410
     engineering_mode:
@@ -746,59 +754,63 @@ sensor:
         name: "mmWave g8 still energy"
   - platform: adc
     pin: "${batt_volt_pin}" # Voltage Divider Output
-    id: battery_voltage_raw
+    id: raw_adc_voltage
     name: "Battery Voltage Raw"
+    internal: true
     update_interval: never #60s - Takes a reading every minute
     attenuation: 12db # Range up to ~3.3V
     accuracy_decimals: 3
-#    filters:
-#      - multiply: 2.0 # Corrects the 100k/100k divider ratio
-  - platform: template #adc
-    name: "Battery Voltage" #"${friendly_name} Battery Voltage"
-    id: "battery_voltage"
-    unit_of_measurement: "V"
-    icon: "mdi:battery-high"
-    device_class: voltage
-    state_class: measurement
-    accuracy_decimals: 2
-    update_interval: 60s
-    lambda: |-
-      // Trigger switch before reading
-      id(batt_divider_switch).turn_on();
-      delay(100); // Short wait for voltage to stabilize
-      
-      // Calculate real voltage: 
-      // Vout = Vin * (R2 / (R1 + R2))
-      // Vin = Vout * ((R1 + R2) / R2)
-      // Using 2.2MOm+2.2MOm, multiplier is (2200+2200)/100 = 2
-      float v_measured = id(battery_voltage_raw).state;
-      float v_real = v_measured * 2.0; 
-      
-      id(batt_divider_switch).turn_off();
-      return v_real;
+    filters:
+      - multiply: ${voltage_multiplier}
   - platform: template
-    name: "Battery Percentage" #"${friendly_name} Battery Percentage"
-    device_class: "battery"
-    id: "battery_percentage"
+    name: "Battery Voltage"
+    id: battery_voltage
+    unit_of_measurement: "V"
+    device_class: "voltage"
+    state_class: "measurement"
     accuracy_decimals: 2
-    update_interval: never #60s
-    unit_of_measurement: '%'
-    lambda: |-
-      float v = id(battery_voltage).state;
-      if (v > 4.15) return 100.0;
-      if (v < 3.2) return 0.0;
-      return (v - 3.2) * 100.0 / (4.15 - 3.2);
-
-# Logic to update every minute
-interval:
-  - interval: 60s
-    then:
-      - switch.turn_on: batt_divider_switch
-      - delay: 100ms # Let voltage settle
-      - component.update: battery_voltage_raw
-      - component.update: battery_percentage
-      - delay: 100ms
-      - switch.turn_off: batt_divider_switch
+    update_interval: ${battery_update_interval}
+    on_value_range:
+      - below: 3.3
+        then:
+          - homeassistant.service:
+              service: notify.notify
+              data:
+                title: "Critical battery: ${friendly_name}"
+                message: "Voltage falls under 3.3V!"
+                priority: "high"
+    lambda: "return id(raw_adc_voltage).state;"
+    on_value:
+      then:
+        - if:
+            condition:
+              # Measuring only if ESP32 is connected to Home Assistant
+              binary_sensor.is_on: link_ha_connected
+            then:
+              - switch.turn_on: batt_divider_switch
+              - delay: 500ms # Important for charge condensator 100nF trough 2.2MΩ
+              - component.update: raw_adc_voltage
+              - switch.turn_off: batt_divider_switch
+            else:
+              - logger.log: "HA is disconnected - measuring dissmissed."
+  - platform: copy
+    source_id: battery_voltage
+    name: "Battery Charge Percent"
+    id: battery_percent
+    unit_of_measurement: "%"
+    device_class: "battery"
+    accuracy_decimals: 0
+    filters:
+      - calibrate_linear:
+          - 4.2 -> 100
+          - 4.0 -> 80
+          - 3.8 -> 60
+          - 3.7 -> 40
+          - 3.5 -> 10
+          - 3.3 -> 0
+      - clamp:
+          min_value: 0
+          max_value: 100
 
 number:
   - platform: template
@@ -828,7 +840,7 @@ number:
     update_interval: never
     optimistic: true
     restore_value: true
-    initial_value: 0
+    initial_value: 0 #${temperature_offset}
     icon: "mdi:thermometer"
     entity_category: config
   - platform: template
@@ -842,7 +854,7 @@ number:
     update_interval: never
     optimistic: true
     restore_value: true
-    initial_value: 0
+    initial_value: ${humidity_offset}
     icon: "mdi:water-percent"
     entity_category: config
   - platform: template
@@ -1115,3 +1127,13 @@ script:
                 red: 0.502
                 green: 0
                 blue: 0
+
+  - id: take_battery_measurement
+    mode: restart
+    then:
+      - switch.turn_on: batt_divider_switch
+      - delay: 500ms # Critical for charge condensator 100nF trough 2.2MΩ
+      - component.update: raw_adc_voltage
+      - component.update: battery_voltage
+      - switch.turn_off: batt_divider_switch
+      - logger.log: "Battery measurement is successful."
