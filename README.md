@@ -36,7 +36,7 @@ and
    The input is only 1.2V above the output to operate normally
    ![AMS1117 LDO 800MA front](https://github.com/dincojazz/AIOSensor/assets/75685324/1630623a-41e4-43f6-b39a-c2f299758d32)
    ![AMS1117 LDO 800MA back](https://github.com/dincojazz/AIOSensor/assets/75685324/e508898c-d46c-47c6-8572-d93146bb5322)
-6. Added DIY voltage divider with MOSFET for battery measurment.
+6. Added DIY voltage divider with MOSFET BSS138  for battery measurment.
    From middle point between two 2.2MΩ resistores connecting to ESP32-C3's ADC on GPIO1 to measure battery voltage.
    From ESP32-C3's GPIO2 connecting to 10KΩ resistor to control MOSFET for measuring cicle.
    <img width="640" height="704" alt="circuit" src="https://github.com/user-attachments/assets/6fdcfbb4-2c07-42e5-81d9-b8f05691a795" />
