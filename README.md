@@ -39,5 +39,6 @@ and
 6. Added DIY voltage divider with MOSFET BSS138  for battery measurment.
    From middle point between two 2.2MΩ resistores connecting to ESP32-C3's ADC on GPIO1 to measure battery voltage.
    From ESP32-C3's GPIO2 connecting to 10KΩ resistor to control MOSFET for measuring cicle.
-   <img width="640" height="704" alt="circuit" src="https://github.com/user-attachments/assets/6fdcfbb4-2c07-42e5-81d9-b8f05691a795" />
+   ![Voltage Divider MOSFET](https://github.com/user-attachments/assets/86faed74-2938-49c2-aefa-b22bc08299d5)
+
 
